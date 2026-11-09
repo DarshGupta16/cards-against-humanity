@@ -77,6 +77,11 @@ export const joinRoom = mutation({
 			throw new Error(`Room with PIN ${cleanPin} not found.`);
 		}
 
+		// Check if player is blocked from this room
+		if (room.blockedPlayerIds?.includes(args.playerId)) {
+			throw new Error("You have been blocked from joining this room.");
+		}
+
 		// Check if player already exists in room (allow reconnect even if game_over)
 		const existingPlayer = await ctx.db
 			.query("players")
@@ -124,6 +129,41 @@ export const joinRoom = mutation({
 		});
 
 		return { roomId: room._id, pin: room.pin, playerId: args.playerId };
+	},
+});
+
+export const scramblePin = mutation({
+	args: {
+		roomId: v.id("rooms"),
+		hostPlayerId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const room = await ctx.db.get(args.roomId);
+		if (!room) throw new Error("Room not found");
+		if (room.hostPlayerId !== args.hostPlayerId) {
+			throw new Error("Only the host can scramble the PIN");
+		}
+
+		let newPin = generatePin();
+		let existing = await ctx.db
+			.query("rooms")
+			.withIndex("by_pin", (q) => q.eq("pin", newPin))
+			.first();
+
+		while (existing) {
+			newPin = generatePin();
+			existing = await ctx.db
+				.query("rooms")
+				.withIndex("by_pin", (q) => q.eq("pin", newPin))
+				.first();
+		}
+
+		await ctx.db.patch(room._id, {
+			pin: newPin,
+			updatedAt: Date.now(),
+		});
+
+		return { pin: newPin };
 	},
 });
 
@@ -211,19 +251,21 @@ export const getRoomState = query({
 		const self = allPlayers.find((p) => p.playerId === args.playerId) ?? null;
 		const isCzar = self?.playerId === room.currentCzarId;
 
-		// Sanitize players info (derive isHost dynamically from room.hostPlayerId)
-		const publicPlayers = allPlayers.map((p) => ({
-			_id: p._id,
-			playerId: p.playerId,
-			nickname: p.nickname,
-			avatarSeed: p.avatarSeed,
-			score: p.score,
-			cardCount: p.hand.length,
-			isHost: p.playerId === room.hostPlayerId,
-			isConnected: p.isConnected,
-			isCzar: p.playerId === room.currentCzarId,
-			hasSubmitted: false,
-		}));
+		// Sanitize players info (derive isHost dynamically from room.hostPlayerId, exclude kicked players)
+		const publicPlayers = allPlayers
+			.filter((p) => !p.isKicked)
+			.map((p) => ({
+				_id: p._id,
+				playerId: p.playerId,
+				nickname: p.nickname,
+				avatarSeed: p.avatarSeed,
+				score: p.score,
+				cardCount: p.hand.length,
+				isHost: p.playerId === room.hostPlayerId,
+				isConnected: p.isConnected,
+				isCzar: p.playerId === room.currentCzarId,
+				hasSubmitted: false,
+			}));
 
 		// Fetch submissions for current round
 		const rawSubmissions = await ctx.db
@@ -301,6 +343,8 @@ export const getRoomState = query({
 			winningSubmissionId: room.winningSubmissionId,
 			roundWinnerPlayerId: room.roundWinnerPlayerId,
 			gameWinnerPlayerId: room.gameWinnerPlayerId,
+			blockedPlayerIds: room.blockedPlayerIds ?? [],
+			scheduledDeletionAt: room.scheduledDeletionAt,
 			updatedAt: room.updatedAt,
 		};
 

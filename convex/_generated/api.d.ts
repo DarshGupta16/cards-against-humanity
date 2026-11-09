@@ -9,6 +9,8 @@
  */
 
 import type * as cardsData from "../cardsData.js";
+import type * as cleanup from "../cleanup.js";
+import type * as crons from "../crons.js";
 import type * as game from "../game.js";
 import type * as rooms from "../rooms.js";
 
@@ -20,6 +22,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   cardsData: typeof cardsData;
+  cleanup: typeof cleanup;
+  crons: typeof crons;
   game: typeof game;
   rooms: typeof rooms;
 }>;

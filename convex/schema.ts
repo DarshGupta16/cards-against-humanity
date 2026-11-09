@@ -30,6 +30,8 @@ export default defineSchema({
 		winningSubmissionId: v.optional(v.string()),
 		roundWinnerPlayerId: v.optional(v.string()),
 		gameWinnerPlayerId: v.optional(v.string()),
+		blockedPlayerIds: v.optional(v.array(v.string())),
+		scheduledDeletionAt: v.optional(v.number()),
 		updatedAt: v.number(),
 	}).index("by_pin", ["pin"]),
 
@@ -47,6 +49,7 @@ export default defineSchema({
 		),
 		isHost: v.boolean(),
 		isConnected: v.boolean(),
+		isKicked: v.optional(v.boolean()),
 		lastSeen: v.number(),
 	})
 		.index("by_room", ["roomId"])
