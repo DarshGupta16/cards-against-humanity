@@ -172,6 +172,60 @@ class SoundEffects {
 		osc.stop(ctx.currentTime + 0.09);
 	}
 
+	// Quick pleasant pop for actions/updates
+	public playPop() {
+		if (!this.enabled) return;
+		const ctx = this.getContext();
+		if (!ctx) return;
+
+		const osc = ctx.createOscillator();
+		const gain = ctx.createGain();
+		osc.type = "sine";
+		osc.frequency.setValueAtTime(450, ctx.currentTime);
+		osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.06);
+
+		gain.gain.setValueAtTime(0.08, ctx.currentTime);
+		gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+
+		osc.connect(gain);
+		gain.connect(ctx.destination);
+
+		osc.onended = () => {
+			osc.disconnect();
+			gain.disconnect();
+		};
+
+		osc.start();
+		osc.stop(ctx.currentTime + 0.06);
+	}
+
+	// Low thud for disband/destructive actions
+	public playThud() {
+		if (!this.enabled) return;
+		const ctx = this.getContext();
+		if (!ctx) return;
+
+		const osc = ctx.createOscillator();
+		const gain = ctx.createGain();
+		osc.type = "triangle";
+		osc.frequency.setValueAtTime(130, ctx.currentTime);
+		osc.frequency.exponentialRampToValueAtTime(35, ctx.currentTime + 0.12);
+
+		gain.gain.setValueAtTime(0.15, ctx.currentTime);
+		gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+
+		osc.connect(gain);
+		gain.connect(ctx.destination);
+
+		osc.onended = () => {
+			osc.disconnect();
+			gain.disconnect();
+		};
+
+		osc.start();
+		osc.stop(ctx.currentTime + 0.12);
+	}
+
 	// Card reveal flip chime
 	public playReveal() {
 		if (!this.enabled) return;

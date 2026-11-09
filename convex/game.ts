@@ -3,6 +3,7 @@ import { internal } from "./_generated/api";
 import { mutation } from "./_generated/server";
 import { drawWhiteCards, getRandomBlackCard } from "./cardsData";
 import { deleteRoomCascade } from "./cleanup";
+import { checkAndTransitionToJudging } from "./gameHelpers";
 
 export const startGame = mutation({
 	args: {
@@ -174,47 +175,13 @@ export const submitCards = mutation({
 		});
 
 		// Check if all connected active non-Czar players have submitted (SEC-10)
-		const allPlayers = await ctx.db
-			.query("players")
-			.withIndex("by_room", (q) => q.eq("roomId", args.roomId))
-			.collect();
-
-		const activeNonCzar = allPlayers.filter(
-			(p) =>
-				p.playerId !== room.currentCzarId &&
-				p.isConnected &&
-				p.hand.length >= 0,
+		await checkAndTransitionToJudging(
+			ctx,
+			room._id,
+			room.currentRound,
+			room.currentCzarId,
+			room.randoCardrissian,
 		);
-
-		const allSubmissions = await ctx.db
-			.query("submissions")
-			.withIndex("by_room_round", (q) =>
-				q.eq("roomId", args.roomId).eq("roundNumber", room.currentRound),
-			)
-			.collect();
-
-		const allHumansSubmitted = activeNonCzar.every((p) =>
-			allSubmissions.some((s) => s.playerId === p.playerId),
-		);
-
-		const randoSubmitted =
-			!room.randoCardrissian ||
-			allSubmissions.some((s) => s.playerId === "rando");
-
-		if (allHumansSubmitted && randoSubmitted && activeNonCzar.length > 0) {
-			// Transition to judging and randomize reveal order (SEC-02)
-			const shuffledSubmissions = [...allSubmissions].sort(
-				() => Math.random() - 0.5,
-			);
-			for (let i = 0; i < shuffledSubmissions.length; i++) {
-				await ctx.db.patch(shuffledSubmissions[i]._id, { revealOrder: i });
-			}
-
-			await ctx.db.patch(room._id, {
-				status: "judging",
-				updatedAt: Date.now(),
-			});
-		}
 
 		return { success: true };
 	},
@@ -512,30 +479,18 @@ export const leaveRoom = mutation({
 
 		// SEC-11: If room was in 'submitting' and all remaining players have submitted, advance to 'judging'
 		if (room.status === "submitting") {
-			const activeNonCzar = remaining.filter(
-				(p) => p.playerId !== room.currentCzarId,
+			const czarId =
+				room.currentCzarId === args.playerId
+					? remaining[0].playerId
+					: room.currentCzarId;
+			await checkAndTransitionToJudging(
+				ctx,
+				room._id,
+				room.currentRound,
+				czarId,
+				room.randoCardrissian,
+				remaining,
 			);
-			const allSubmissions = await ctx.db
-				.query("submissions")
-				.withIndex("by_room_round", (q) =>
-					q.eq("roomId", room._id).eq("roundNumber", room.currentRound),
-				)
-				.collect();
-
-			const allRemainingSubmitted = activeNonCzar.every((p) =>
-				allSubmissions.some((s) => s.playerId === p.playerId),
-			);
-
-			if (allRemainingSubmitted && activeNonCzar.length > 0) {
-				const shuffled = [...allSubmissions].sort(() => Math.random() - 0.5);
-				for (let i = 0; i < shuffled.length; i++) {
-					await ctx.db.patch(shuffled[i]._id, { revealOrder: i });
-				}
-				await ctx.db.patch(room._id, {
-					status: "judging",
-					updatedAt: Date.now(),
-				});
-			}
 		}
 
 		return { success: true };
@@ -623,30 +578,18 @@ export const kickPlayer = mutation({
 
 		// If in 'submitting' phase, check if all remaining active players have submitted
 		if (room.status === "submitting") {
-			const activeNonCzar = remaining.filter(
-				(p) => p.playerId !== room.currentCzarId,
+			const czarId =
+				room.currentCzarId === args.targetPlayerId
+					? remaining[0].playerId
+					: room.currentCzarId;
+			await checkAndTransitionToJudging(
+				ctx,
+				room._id,
+				room.currentRound,
+				czarId,
+				room.randoCardrissian,
+				remaining,
 			);
-			const allSubmissions = await ctx.db
-				.query("submissions")
-				.withIndex("by_room_round", (q) =>
-					q.eq("roomId", room._id).eq("roundNumber", room.currentRound),
-				)
-				.collect();
-
-			const allRemainingSubmitted = activeNonCzar.every((p) =>
-				allSubmissions.some((s) => s.playerId === p.playerId),
-			);
-
-			if (allRemainingSubmitted && activeNonCzar.length > 0) {
-				const shuffled = [...allSubmissions].sort(() => Math.random() - 0.5);
-				for (let i = 0; i < shuffled.length; i++) {
-					await ctx.db.patch(shuffled[i]._id, { revealOrder: i });
-				}
-				await ctx.db.patch(room._id, {
-					status: "judging",
-					updatedAt: Date.now(),
-				});
-			}
 		}
 
 		return { success: true };

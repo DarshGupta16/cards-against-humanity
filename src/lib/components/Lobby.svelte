@@ -1,6 +1,8 @@
 <script lang="ts">
 import { game, type Player } from "#lib/gameStore.svelte";
 import { sound } from "#lib/audio";
+import { copyToClipboard, shareRoomInvite } from "#lib/utils/clipboard";
+import { modalStore } from "#lib/modalStore.svelte";
 import {
 	Copy,
 	Check,
@@ -17,15 +19,9 @@ import {
 	Shuffle,
 	Trash2,
 } from "lucide-svelte";
-import RulesModal from "./RulesModal.svelte";
-import EditDisplayNameModal from "./EditDisplayNameModal.svelte";
-import KickPlayerModal from "./KickPlayerModal.svelte";
 
 let copied = $state(false);
 let linkCopied = $state(false);
-let showRules = $state(false);
-let showEditName = $state(false);
-let kickTargetPlayer = $state<Player | null>(null);
 let isScramblingPin = $state(false);
 
 let room = $derived(game.state.room);
@@ -43,39 +39,20 @@ let canStart = $derived(
 async function copyPin() {
 	if (!room) return;
 	sound.playSelect();
-	try {
-		await navigator.clipboard.writeText(room.pin);
+	const ok = await copyToClipboard(room.pin);
+	if (ok) {
 		copied = true;
 		setTimeout(() => (copied = false), 2000);
-	} catch {
-		// fallback
 	}
 }
 
 async function shareGame() {
 	if (!room) return;
 	sound.playSelect();
-	const url = `${window.location.origin}?pin=${room.pin}`;
-
-	if (navigator.share) {
-		try {
-			await navigator.share({
-				title: "Join Cards Against Humanity!",
-				text: `Join our Cards Against Humanity game! Room PIN: ${room.pin}`,
-				url,
-			});
-			return;
-		} catch {
-			// User dismissed share sheet or unsupported
-		}
-	}
-
-	try {
-		await navigator.clipboard.writeText(url);
+	const result = await shareRoomInvite(room.pin);
+	if (result === "copied") {
 		linkCopied = true;
 		setTimeout(() => (linkCopied = false), 2000);
-	} catch {
-		// fallback
 	}
 }
 
@@ -138,7 +115,7 @@ function handleRandoToggle() {
 
     <div class="flex items-center gap-2">
       <button
-        onclick={() => (showRules = true)}
+        onclick={() => modalStore.openRules()}
         class="min-h-[44px] flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 active:bg-white/20 text-white/80 hover:text-white text-xs font-bold transition-colors cursor-pointer"
       >
         <BookOpen class="w-4 h-4" />
@@ -277,7 +254,7 @@ function handleRandoToggle() {
             {#if player.playerId === self?.playerId}
               <button
                 type="button"
-                onclick={() => (showEditName = true)}
+                onclick={() => modalStore.openEditName()}
                 class="min-h-[44px] flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 active:bg-white/20 text-white/80 hover:text-white text-xs font-bold transition-all shrink-0 cursor-pointer"
                 title="Change your display name"
               >
@@ -289,7 +266,7 @@ function handleRandoToggle() {
             {#if isHost && player.playerId !== self?.playerId}
               <button
                 type="button"
-                onclick={() => (kickTargetPlayer = player)}
+                onclick={() => modalStore.openKick(player)}
                 class="min-h-[44px] flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 active:bg-red-500/25 text-red-400 text-xs font-bold transition-all shrink-0 cursor-pointer border border-red-500/20"
                 title={`Remove ${player.nickname} from game`}
               >
@@ -387,14 +364,3 @@ function handleRandoToggle() {
     </div>
   {/if}
 </div>
-
-<RulesModal isOpen={showRules} onclose={() => (showRules = false)} />
-<EditDisplayNameModal isOpen={showEditName} onclose={() => (showEditName = false)} />
-<KickPlayerModal
-  isOpen={Boolean(kickTargetPlayer)}
-  player={kickTargetPlayer}
-  onclose={() => (kickTargetPlayer = null)}
-  onconfirm={async (playerId, block, scramble) => {
-    await game.kickPlayer(playerId, block, scramble);
-  }}
-/>

@@ -2,74 +2,23 @@ import confetti from "canvas-confetti";
 import { api } from "../../convex/_generated/api";
 import { sound } from "./audio";
 import { getConvexClient } from "./convex";
-import cardsData from "./data/cards.json";
+import {
+	type Card,
+	type GameState,
+	type LocalRoomData,
+	localSimulation,
+	type Player,
+	type Room,
+	type Submission,
+} from "./localSimulationEngine";
+import { getNickname, getPlayerId, saveNickname } from "./playerSession";
 
-export interface Card {
-	id: string;
-	text: string;
-	pick?: number;
-}
-
-export interface Player {
-	_id?: string;
-	playerId: string;
-	nickname: string;
-	avatarSeed: string;
-	score: number;
-	cardCount: number;
-	isHost: boolean;
-	isConnected: boolean;
-	isCzar: boolean;
-	hasSubmitted: boolean;
-}
-
-export interface Submission {
-	_id: string;
-	roundNumber: number;
-	playerId: string;
-	playerName: string;
-	cards: Card[];
-	isRevealed: boolean;
-	isWinner: boolean;
-	isSelf: boolean;
-}
-
-export interface Room {
-	_id: string;
-	pin: string;
-	hostPlayerId: string;
-	status: "lobby" | "submitting" | "judging" | "round_over" | "game_over";
-	currentRound: number;
-	targetScore: number;
-	handSize: number;
-	randoCardrissian: boolean;
-	czarIndex: number;
-	currentCzarId: string;
-	blackCard?: Card;
-	winningSubmissionId?: string;
-	roundWinnerPlayerId?: string;
-	gameWinnerPlayerId?: string;
-	updatedAt: number;
-}
-
-export interface GameState {
-	room: Room | null;
-	players: Player[];
-	self: {
-		playerId: string;
-		nickname: string;
-		score: number;
-		hand: Card[];
-		isHost: boolean;
-	} | null;
-	submissions: Submission[];
-	isCzar: boolean;
-	roundNumber: number;
-}
+export type { Card, GameState, LocalRoomData, Player, Room, Submission };
 
 class GameEngine {
 	public playerId: string = "";
 	public nickname: string = "";
+
 	public state = $state<GameState>({
 		room: null,
 		players: [],
@@ -87,47 +36,26 @@ class GameEngine {
 	public userNotification = $state<string | null>(null);
 
 	private unsubscribeConvex: (() => void) | null = null;
-	private broadcastChannel: BroadcastChannel | null = null;
-	private localPollInterval: number | null = null;
 
 	constructor() {
 		if (typeof window !== "undefined") {
-			this.initPlayer();
-			this.setupBroadcast();
-		}
-	}
+			this.playerId = getPlayerId();
+			this.nickname = getNickname();
 
-	private initPlayer() {
-		let pid = localStorage.getItem("cah_player_id");
-		if (!pid) {
-			pid = `p_${Math.random().toString(36).substring(2, 10)}`;
-			localStorage.setItem("cah_player_id", pid);
+			localSimulation.setupBroadcast(
+				() => this.state.room?.pin,
+				(localData) => this.applyLocalState(localData),
+				() => {
+					this.leaveRoom();
+					this.userNotification =
+						"The game room has ended or was disbanded by the host.";
+				},
+			);
 		}
-		this.playerId = pid;
-
-		const savedName = localStorage.getItem("cah_nickname");
-		if (savedName) {
-			this.nickname = savedName;
-		}
-	}
-
-	private setupBroadcast() {
-		if (typeof window === "undefined" || !("BroadcastChannel" in window))
-			return;
-		this.broadcastChannel = new BroadcastChannel("cah_game_channel");
-		this.broadcastChannel.onmessage = (event) => {
-			const { type, pin, state } = event.data;
-			if (type === "STATE_UPDATE" && this.state.room?.pin === pin) {
-				this.applyLocalState(state);
-			}
-		};
 	}
 
 	public setNickname(name: string) {
-		this.nickname = name.trim();
-		if (typeof window !== "undefined") {
-			localStorage.setItem("cah_nickname", this.nickname);
-		}
+		this.nickname = saveNickname(name);
 	}
 
 	// --- ROOM CREATION & JOINING ---
@@ -164,48 +92,14 @@ class GameEngine {
 		}
 
 		// Local Simulation Mode
-		const pin = Math.floor(100000 + Math.random() * 900000).toString();
-		const roomId = `local_room_${pin}`;
-		const initialRoom: Room = {
-			_id: roomId,
-			pin,
-			hostPlayerId: this.playerId,
-			status: "lobby",
-			currentRound: 0,
+		const { pin, localData } = localSimulation.createRoom(
+			this.playerId,
+			this.nickname,
 			targetScore,
-			handSize: 10,
 			randoCardrissian,
-			czarIndex: 0,
-			currentCzarId: this.playerId,
-			updatedAt: Date.now(),
-		};
-
-		const hostPlayer: Player = {
-			_id: `p_${this.playerId}`,
-			playerId: this.playerId,
-			nickname: this.nickname || "Host",
-			avatarSeed: this.playerId.slice(0, 8),
-			score: 0,
-			cardCount: 0,
-			isHost: true,
-			isConnected: true,
-			isCzar: true,
-			hasSubmitted: false,
-		};
-
-		const localData = {
-			room: initialRoom,
-			players: [hostPlayer],
-			playerHands: {
-				[this.playerId]: [] as Card[],
-			},
-			submissions: [] as Submission[],
-			usedBlackCardIds: [] as string[],
-			usedWhiteCardIds: [] as string[],
-		};
-
-		this.saveLocalData(pin, localData);
-		this.startLocalSync(pin);
+		);
+		this.applyLocalState(localData);
+		localSimulation.startSync(pin, (data) => this.applyLocalState(data));
 		this.isConnecting = false;
 		sound.playDeal();
 		return pin;
@@ -236,58 +130,26 @@ class GameEngine {
 		}
 
 		// Local Simulation Mode
-		const local = this.loadLocalData(cleanPin);
-		if (!local) {
-			this.errorMessage = `Room with PIN ${cleanPin} not found.`;
+		const joinResult = localSimulation.joinRoom(
+			cleanPin,
+			this.playerId,
+			this.nickname,
+		);
+		if (!joinResult.success || !joinResult.localData) {
+			this.errorMessage =
+				joinResult.error || `Room with PIN ${cleanPin} not found.`;
 			this.isConnecting = false;
 			return false;
 		}
 
-		let p = local.players.find((pl: Player) => pl.playerId === this.playerId);
-		if (!p) {
-			// F-09: Deal 10 cards if joining an active game
-			let startingHand: Card[] = [];
-			if (local.room.status !== "lobby") {
-				const activeIds = Object.values(
-					local.playerHands as Record<string, Card[]>,
-				).flatMap((h) => h.map((c) => c.id));
-				const { drawn, updatedUsed } = this.localDrawCards(
-					10,
-					local.usedWhiteCardIds || [],
-					activeIds,
-				);
-				startingHand = drawn;
-				local.usedWhiteCardIds = updatedUsed;
-			}
-
-			p = {
-				_id: `p_${this.playerId}`,
-				playerId: this.playerId,
-				nickname:
-					this.nickname || `Player ${Math.floor(10 + Math.random() * 90)}`,
-				avatarSeed: this.playerId.slice(0, 8),
-				score: 0,
-				cardCount: startingHand.length,
-				isHost: false,
-				isConnected: true,
-				isCzar: false,
-				hasSubmitted: false,
-			};
-			local.players.push(p);
-			local.playerHands[this.playerId] = startingHand;
-		} else {
-			p.nickname = this.nickname || p.nickname;
-			p.isConnected = true;
-		}
-
-		this.saveLocalData(cleanPin, local);
-		this.startLocalSync(cleanPin);
+		this.applyLocalState(joinResult.localData);
+		localSimulation.startSync(cleanPin, (data) => this.applyLocalState(data));
 		this.isConnecting = false;
 		sound.playDeal();
 		return true;
 	}
 
-	// --- GAME ACTIONS ---
+	// --- GAME SETTINGS & PROFILE ---
 
 	public async updateSettings(
 		targetScore?: number,
@@ -310,18 +172,14 @@ class GameEngine {
 			}
 		}
 
-		// Local update settings
 		const pin = this.state.room?.pin;
 		if (!pin) return;
-		const local = this.loadLocalData(pin);
-		if (local?.room.status !== "lobby") return;
-
-		if (targetScore !== undefined) local.room.targetScore = targetScore;
-		if (randoCardrissian !== undefined)
-			local.room.randoCardrissian = randoCardrissian;
-
-		this.saveLocalData(pin, local);
-		this.applyLocalState(local);
+		const updated = localSimulation.updateSettings(
+			pin,
+			targetScore,
+			randoCardrissian,
+		);
+		if (updated) this.applyLocalState(updated);
 	}
 
 	public async updateDisplayName(newNickname: string): Promise<boolean> {
@@ -348,31 +206,16 @@ class GameEngine {
 			}
 		}
 
-		// Local simulation update
 		const pin = this.state.room?.pin;
 		if (!pin) return false;
-		const local = this.loadLocalData(pin);
-		if (!local) return false;
-
-		const player = local.players.find(
-			(p: Player) => p.playerId === this.playerId,
+		const updated = localSimulation.updateDisplayName(
+			pin,
+			this.playerId,
+			cleanName,
 		);
-		if (player) {
-			player.nickname = cleanName;
-		}
+		if (!updated) return false;
 
-		// Also update current round submission if exists
-		const sub = (local.submissions || []).find(
-			(s: Submission) =>
-				s.playerId === this.playerId &&
-				s.roundNumber === local.room.currentRound,
-		);
-		if (sub) {
-			sub.playerName = cleanName;
-		}
-
-		this.saveLocalData(pin, local);
-		this.applyLocalState(local);
+		this.applyLocalState(updated);
 		sound.playPop();
 		return true;
 	}
@@ -380,6 +223,7 @@ class GameEngine {
 	public async kickPlayer(
 		targetPlayerId: string,
 		block: boolean = false,
+		scramble: boolean = false,
 	): Promise<boolean> {
 		if (this.isConvexLive && this.state.room) {
 			const client = getConvexClient();
@@ -391,6 +235,9 @@ class GameEngine {
 						targetPlayerId,
 						block,
 					});
+					if (scramble) {
+						await this.scramblePin();
+					}
 					sound.playSnap();
 					return true;
 				} catch (err) {
@@ -400,25 +247,15 @@ class GameEngine {
 			}
 		}
 
-		// Local simulation kick
 		const pin = this.state.room?.pin;
 		if (!pin) return false;
-		const local = this.loadLocalData(pin);
-		if (!local) return false;
+		const updated = localSimulation.kickPlayer(pin, targetPlayerId, block);
+		if (!updated) return false;
 
-		local.players = (local.players || []).filter(
-			(p: Player) => p.playerId !== targetPlayerId,
-		);
-		local.submissions = (local.submissions || []).filter(
-			(s: Submission) => s.playerId !== targetPlayerId,
-		);
-		if (block) {
-			local.room.blockedPlayerIds = local.room.blockedPlayerIds || [];
-			local.room.blockedPlayerIds.push(targetPlayerId);
+		this.applyLocalState(updated);
+		if (scramble) {
+			await this.scramblePin();
 		}
-
-		this.saveLocalData(pin, local);
-		this.applyLocalState(local);
 		sound.playSnap();
 		return true;
 	}
@@ -441,19 +278,17 @@ class GameEngine {
 			}
 		}
 
-		// Local simulation scramble
 		const oldPin = this.state.room?.pin;
 		if (!oldPin) return null;
-		const local = this.loadLocalData(oldPin);
-		if (!local) return null;
+		const scrambled = localSimulation.scramblePin(oldPin);
+		if (!scrambled) return null;
 
-		const newPin = Math.floor(100000 + Math.random() * 900000).toString();
-		local.room.pin = newPin;
-		localStorage.removeItem(`cah_room_${oldPin}`);
-		this.saveLocalData(newPin, local);
-		this.applyLocalState(local);
+		localSimulation.startSync(scrambled.newPin, (data) =>
+			this.applyLocalState(data),
+		);
+		this.applyLocalState(scrambled.localData);
 		sound.playPop();
-		return newPin;
+		return scrambled.newPin;
 	}
 
 	public async stopGameToLobby(): Promise<boolean> {
@@ -476,18 +311,10 @@ class GameEngine {
 
 		const pin = this.state.room?.pin;
 		if (!pin) return false;
-		const local = this.loadLocalData(pin);
-		if (!local) return false;
+		const updated = localSimulation.stopGameToLobby(pin);
+		if (!updated) return false;
 
-		local.room.status = "lobby";
-		local.room.currentRound = 0;
-		local.room.winningSubmissionId = undefined;
-		local.room.roundWinnerPlayerId = undefined;
-		local.room.gameWinnerPlayerId = undefined;
-		local.submissions = [];
-
-		this.saveLocalData(pin, local);
-		this.applyLocalState(local);
+		this.applyLocalState(updated);
 		sound.playPop();
 		return true;
 	}
@@ -512,19 +339,10 @@ class GameEngine {
 
 		const pin = this.state.room?.pin;
 		if (!pin) return false;
-		const local = this.loadLocalData(pin);
-		if (!local) return false;
+		const updated = localSimulation.restartGame(pin);
+		if (!updated) return false;
 
-		local.submissions = [];
-		local.room.status = "submitting";
-		local.room.currentRound = 1;
-		for (const p of local.players) {
-			p.score = 0;
-			p.hasSubmitted = false;
-		}
-
-		this.saveLocalData(pin, local);
-		this.applyLocalState(local);
+		this.applyLocalState(updated);
 		sound.playDeal();
 		return true;
 	}
@@ -546,13 +364,7 @@ class GameEngine {
 
 		const pin = this.state.room?.pin;
 		if (pin) {
-			localStorage.removeItem(`cah_room_${pin}`);
-			if (this.broadcastChannel) {
-				this.broadcastChannel.postMessage({
-					type: "ROOM_DISBANDED",
-					pin,
-				});
-			}
+			localSimulation.deleteRoom(pin);
 		}
 
 		this.leaveRoom();
@@ -573,54 +385,10 @@ class GameEngine {
 			}
 		}
 
-		// Local Game Start
 		const pin = this.state.room?.pin;
 		if (!pin) return;
-		const local = this.loadLocalData(pin);
-		if (!local) return;
-
-		let usedWhite = [...(local.usedWhiteCardIds || [])];
-		for (const player of local.players) {
-			const { drawn, updatedUsed } = this.localDrawCards(10, usedWhite);
-			usedWhite = updatedUsed;
-			local.playerHands[player.playerId] = drawn;
-			player.cardCount = 10;
-			player.score = 0;
-		}
-
-		const { blackCard, updatedBlackUsed } = this.localDrawBlackCard(
-			local.usedBlackCardIds || [],
-		);
-
-		local.room.status = "submitting";
-		local.room.currentRound = 1;
-		local.room.czarIndex = 0;
-		local.room.currentCzarId = local.players[0].playerId;
-		local.room.blackCard = blackCard;
-		local.usedBlackCardIds = updatedBlackUsed;
-		local.usedWhiteCardIds = usedWhite;
-		local.submissions = [];
-
-		if (local.room.randoCardrissian) {
-			const { drawn: randoCards, updatedUsed: randoUsed } = this.localDrawCards(
-				blackCard.pick || 1,
-				usedWhite,
-			);
-			local.usedWhiteCardIds = randoUsed;
-			local.submissions.push({
-				_id: "sub_rando_1",
-				roundNumber: 1,
-				playerId: "rando",
-				playerName: "Rando Cardrissian (Bot)",
-				cards: randoCards,
-				isRevealed: false,
-				isWinner: false,
-				isSelf: false,
-			});
-		}
-
-		this.saveLocalData(pin, local);
-		this.applyLocalState(local);
+		const updated = localSimulation.startGame(pin);
+		if (updated) this.applyLocalState(updated);
 	}
 
 	public toggleCardSelection(cardId: string) {
@@ -638,7 +406,6 @@ class GameEngine {
 			if (this.selectedCardIds.length < requiredPick) {
 				this.selectedCardIds = [...this.selectedCardIds, cardId];
 			} else {
-				// Replace last selection
 				this.selectedCardIds = [
 					...this.selectedCardIds.slice(0, requiredPick - 1),
 					cardId,
@@ -677,53 +444,22 @@ class GameEngine {
 			}
 		}
 
-		// Local Submission
 		const pin = this.state.room?.pin;
 		if (!pin) return;
-		const local = this.loadLocalData(pin);
-		if (!local) return;
-
-		const myHand: Card[] = local.playerHands[this.playerId] || [];
-		const submittedCards = this.selectedCardIds
-			.map((id) => myHand.find((c) => c.id === id))
-			.filter((c): c is Card => c !== undefined);
-
-		local.playerHands[this.playerId] = myHand.filter(
-			(c) => !this.selectedCardIds.includes(c.id),
+		const result = localSimulation.submitCards(
+			pin,
+			this.playerId,
+			this.nickname,
+			this.selectedCardIds,
 		);
-
-		const p = local.players.find((pl: Player) => pl.playerId === this.playerId);
-		if (p) {
-			p.cardCount = local.playerHands[this.playerId].length;
-			p.hasSubmitted = true;
-		}
-
-		local.submissions.push({
-			_id: `sub_${this.playerId}_${local.room.currentRound}`,
-			roundNumber: local.room.currentRound,
-			playerId: this.playerId,
-			playerName: this.nickname,
-			cards: submittedCards,
-			isRevealed: false,
-			isWinner: false,
-			isSelf: true,
-		});
-
-		const activeNonCzar = local.players.filter(
-			(pl: Player) =>
-				pl.playerId !== local.room.currentCzarId && pl.isConnected,
-		);
-		const expected =
-			activeNonCzar.length + (local.room.randoCardrissian ? 1 : 0);
-
-		if (local.submissions.length >= expected) {
-			local.room.status = "judging";
-			sound.playDeal();
+		if (result) {
+			if (result.shouldPlayDeal) {
+				sound.playDeal();
+			}
+			this.applyLocalState(result.localData);
 		}
 
 		this.selectedCardIds = [];
-		this.saveLocalData(pin, local);
-		this.applyLocalState(local);
 		this.isSubmitting = false;
 	}
 
@@ -740,20 +476,10 @@ class GameEngine {
 			}
 		}
 
-		// Local reveal
 		const pin = this.state.room?.pin;
 		if (!pin) return;
-		const local = this.loadLocalData(pin);
-		if (!local) return;
-
-		const sub = local.submissions.find(
-			(s: Submission) => s._id === submissionId,
-		);
-		if (sub) {
-			sub.isRevealed = true;
-		}
-		this.saveLocalData(pin, local);
-		this.applyLocalState(local);
+		const updated = localSimulation.revealSubmission(pin, submissionId);
+		if (updated) this.applyLocalState(updated);
 	}
 
 	public async revealAll() {
@@ -769,17 +495,10 @@ class GameEngine {
 			}
 		}
 
-		// Local reveal all
 		const pin = this.state.room?.pin;
 		if (!pin) return;
-		const local = this.loadLocalData(pin);
-		if (!local) return;
-
-		for (const sub of local.submissions) {
-			sub.isRevealed = true;
-		}
-		this.saveLocalData(pin, local);
-		this.applyLocalState(local);
+		const updated = localSimulation.revealAllSubmissions(pin);
+		if (updated) this.applyLocalState(updated);
 	}
 
 	public async pickWinner(submissionId: string) {
@@ -797,39 +516,10 @@ class GameEngine {
 			}
 		}
 
-		// Local pick winner
 		const pin = this.state.room?.pin;
 		if (!pin) return;
-		const local = this.loadLocalData(pin);
-		if (!local) return;
-
-		const sub = local.submissions.find(
-			(s: Submission) => s._id === submissionId,
-		);
-		if (!sub) return;
-
-		sub.isRevealed = true;
-		sub.isWinner = true;
-		local.room.winningSubmissionId = submissionId;
-		local.room.roundWinnerPlayerId = sub.playerId;
-
-		let isGameWon = false;
-		if (sub.playerId !== "rando") {
-			const winner = local.players.find(
-				(pl: Player) => pl.playerId === sub.playerId,
-			);
-			if (winner) {
-				winner.score += 1;
-				if (winner.score >= local.room.targetScore) {
-					isGameWon = true;
-					local.room.gameWinnerPlayerId = winner.playerId;
-				}
-			}
-		}
-
-		local.room.status = isGameWon ? "game_over" : "round_over";
-		this.saveLocalData(pin, local);
-		this.applyLocalState(local);
+		const result = localSimulation.pickWinner(pin, submissionId);
+		if (result) this.applyLocalState(result.localData);
 	}
 
 	public async nextRound() {
@@ -845,81 +535,12 @@ class GameEngine {
 			}
 		}
 
-		// Local next round
 		const pin = this.state.room?.pin;
 		if (!pin) return;
-		const local = this.loadLocalData(pin);
-		if (!local) return;
-
-		let usedWhite = [...(local.usedWhiteCardIds || [])];
-		const activeIds = Object.values(
-			local.playerHands as Record<string, Card[]>,
-		).flatMap((h) => h.map((c) => c.id));
-
-		for (const player of local.players) {
-			const hand: Card[] = local.playerHands[player.playerId] || [];
-			const needed = 10 - hand.length;
-			if (needed > 0) {
-				const { drawn, updatedUsed } = this.localDrawCards(
-					needed,
-					usedWhite,
-					activeIds,
-				);
-				usedWhite = updatedUsed;
-				local.playerHands[player.playerId] = [...hand, ...drawn];
-				player.cardCount = local.playerHands[player.playerId].length;
-			}
-			player.hasSubmitted = false;
-		}
-
-		// Rotate Czar among connected players
-		const connected = local.players.filter((p: Player) => p.isConnected);
-		const currentCzarIdx = connected.findIndex(
-			(p: Player) => p.playerId === local.room.currentCzarId,
-		);
-		const nextCzarIdx = (currentCzarIdx + 1) % connected.length;
-		local.room.czarIndex = nextCzarIdx;
-		local.room.currentCzarId = connected[nextCzarIdx].playerId;
-
-		// Draw black card
-		const { blackCard, updatedBlackUsed } = this.localDrawBlackCard(
-			local.usedBlackCardIds || [],
-		);
-		const nextRound = local.room.currentRound + 1;
-
-		local.room.currentRound = nextRound;
-		local.room.status = "submitting";
-		local.room.blackCard = blackCard;
-		local.usedBlackCardIds = updatedBlackUsed;
-		local.usedWhiteCardIds = usedWhite;
-		local.room.winningSubmissionId = undefined;
-		local.room.roundWinnerPlayerId = undefined;
-		local.submissions = [];
-
-		if (local.room.randoCardrissian) {
-			const { drawn: randoCards, updatedUsed: randoUsed } = this.localDrawCards(
-				blackCard.pick || 1,
-				usedWhite,
-				activeIds,
-			);
-			local.usedWhiteCardIds = randoUsed;
-			local.submissions.push({
-				_id: `sub_rando_${nextRound}`,
-				roundNumber: nextRound,
-				playerId: "rando",
-				playerName: "Rando Cardrissian (Bot)",
-				cards: randoCards,
-				isRevealed: false,
-				isWinner: false,
-				isSelf: false,
-			});
-		}
-
-		this.saveLocalData(pin, local);
-		this.applyLocalState(local);
+		const updated = localSimulation.nextRound(pin);
+		if (updated) this.applyLocalState(updated);
 	}
 
-	// F-05 & SEC-23: Clean up remote connection on backend
 	public async leaveRoom() {
 		sound.playSnap();
 
@@ -941,10 +562,9 @@ class GameEngine {
 			this.unsubscribeConvex();
 			this.unsubscribeConvex = null;
 		}
-		if (this.localPollInterval) {
-			clearInterval(this.localPollInterval);
-			this.localPollInterval = null;
-		}
+
+		localSimulation.stopSync();
+
 		this.state = {
 			room: null,
 			players: [],
@@ -954,6 +574,7 @@ class GameEngine {
 			roundNumber: 0,
 		};
 		this.selectedCardIds = [];
+		this.isConvexLive = false;
 	}
 
 	public triggerConfetti() {
@@ -1008,127 +629,18 @@ class GameEngine {
 		);
 	}
 
-	// --- LOCAL FALLBACK ENGINE ---
-
-	private localDrawCards(
-		count: number,
-		usedIds: string[],
-		activeHandCardIds: string[] = [],
-	) {
-		let available = cardsData.white.filter((c) => !usedIds.includes(c.id));
-		let currentUsed = usedIds;
-		if (available.length < count) {
-			const activeSet = new Set(activeHandCardIds);
-			available = cardsData.white.filter((c) => !activeSet.has(c.id));
-			currentUsed = [...activeHandCardIds];
-		}
-		const shuffled = [...available].sort(() => Math.random() - 0.5);
-		const drawn = shuffled.slice(0, count);
-		return {
-			drawn,
-			updatedUsed: [...currentUsed, ...drawn.map((c) => c.id)],
-		};
-	}
-
-	private localDrawBlackCard(usedIds: string[]) {
-		let available = cardsData.black.filter((c) => !usedIds.includes(c.id));
-		let currentUsed = usedIds;
-		if (available.length === 0) {
-			available = [...cardsData.black];
-			currentUsed = [];
-		}
-		const idx = Math.floor(Math.random() * available.length);
-		const card = available[idx];
-		return {
-			blackCard: card,
-			updatedBlackUsed: [...currentUsed, card.id],
-		};
-	}
-
-	private loadLocalData(pin: string) {
-		if (typeof window === "undefined") return null;
-		const raw = localStorage.getItem(`cah_room_${pin}`);
-		if (!raw) return null;
-		try {
-			return JSON.parse(raw);
-		} catch {
-			return null;
-		}
-	}
-
-	private saveLocalData(pin: string, data: any) {
-		if (typeof window === "undefined") return;
-		localStorage.setItem(`cah_room_${pin}`, JSON.stringify(data));
-		if (this.broadcastChannel) {
-			this.broadcastChannel.postMessage({
-				type: "STATE_UPDATE",
-				pin,
-				state: data,
-			});
-		}
-	}
-
-	private applyLocalState(local: any) {
-		if (!local?.room) return;
-
-		const myHand: Card[] = local.playerHands[this.playerId] || [];
-		const isCzar = local.room.currentCzarId === this.playerId;
-		const isHost = local.room.hostPlayerId === this.playerId;
-		const selfPlayer = local.players.find(
-			(p: Player) => p.playerId === this.playerId,
+	private applyLocalState(localData: LocalRoomData) {
+		const transformed = localSimulation.transformLocalStateToGameState(
+			localData,
+			this.playerId,
+			this.nickname,
 		);
-
-		const isResolved =
-			local.room.status === "round_over" || local.room.status === "game_over";
-
-		// Submissions visibility and anonymity during submitting/judging
-		let eligibleSubmissions = local.submissions || [];
-		if (local.room.status === "submitting") {
-			eligibleSubmissions = (local.submissions || []).filter(
-				(s: Submission) => s.playerId === this.playerId,
-			);
-		}
-
-		const visibleSubs = eligibleSubmissions.map((s: Submission) => {
-			const isSelf = s.playerId === this.playerId;
-			return {
-				...s,
-				playerId: isResolved || isSelf ? s.playerId : "anonymous",
-				playerName: isResolved
-					? s.playerName
-					: isSelf
-						? "You"
-						: "Anonymous Player",
-				isSelf,
-			};
-		});
-
-		this.state.room = local.room;
-		this.state.players = local.players;
-		this.state.self = {
-			playerId: this.playerId,
-			nickname: selfPlayer?.nickname || this.nickname,
-			score: selfPlayer?.score || 0,
-			hand: myHand,
-			isHost,
-		};
-		this.state.submissions = visibleSubs;
-		this.state.isCzar = isCzar;
-		this.state.roundNumber = local.room.currentRound;
-	}
-
-	private startLocalSync(pin: string) {
-		if (this.localPollInterval) {
-			clearInterval(this.localPollInterval);
-		}
-
-		const sync = () => {
-			const data = this.loadLocalData(pin);
-			if (data) this.applyLocalState(data);
-		};
-
-		sync();
-		this.localPollInterval = window.setInterval(sync, 1000);
+		this.state.room = transformed.room;
+		this.state.players = transformed.players;
+		this.state.self = transformed.self;
+		this.state.submissions = transformed.submissions;
+		this.state.isCzar = transformed.isCzar;
+		this.state.roundNumber = transformed.roundNumber;
 	}
 }
 
