@@ -13,7 +13,7 @@ import {
 
 <div class="space-y-8 text-white/90">
   <!-- Quick 3-Step Summary / Hero Bar -->
-  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
     <div class="bg-white/[0.04] border border-white/10 rounded-2xl p-4 flex flex-col justify-between">
       <div class="flex items-center justify-between mb-3">
         <span class="text-xs font-black tracking-widest text-white/50 uppercase">Step 01</span>
@@ -121,7 +121,7 @@ import {
       Cards Against Humanity encourages house rules. Here are the most famous official variants:
     </p>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
       <!-- Rando Cardrissian -->
       <div class="bg-white/[0.04] border border-white/10 rounded-2xl p-4 space-y-2">
         <div class="flex items-center justify-between">
@@ -183,7 +183,7 @@ import {
       </div>
 
       <!-- Never Have I Ever -->
-      <div class="bg-white/[0.04] border border-white/10 rounded-2xl p-4 space-y-2 sm:col-span-2">
+      <div class="bg-white/[0.04] border border-white/10 rounded-2xl p-4 space-y-2 md:col-span-2">
         <div class="flex items-center justify-between">
           <h4 class="font-black text-sm text-white flex items-center gap-1.5">
             <HelpCircle class="w-4 h-4 text-white/70" />
@@ -207,7 +207,7 @@ import {
       <h3 class="text-lg font-black tracking-tight uppercase">Multiplayer Web Tips</h3>
     </div>
 
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-white/70">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-white/70">
       <div class="bg-white/[0.03] p-3 rounded-xl border border-white/10">
         <strong class="text-white block mb-1">Room PIN</strong>
         Share the 6-digit PIN or click "Copy Link" to let friends join instantly on phone, tablet, or desktop.
