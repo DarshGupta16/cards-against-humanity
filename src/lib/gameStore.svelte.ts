@@ -84,6 +84,7 @@ class GameEngine {
 	public isConnecting = $state<boolean>(false);
 	public errorMessage = $state<string>("");
 	public isConvexLive = $state<boolean>(false);
+	public userNotification = $state<string | null>(null);
 
 	private unsubscribeConvex: (() => void) | null = null;
 	private broadcastChannel: BroadcastChannel | null = null;
@@ -373,6 +374,189 @@ class GameEngine {
 		this.saveLocalData(pin, local);
 		this.applyLocalState(local);
 		sound.playPop();
+		return true;
+	}
+
+	public async kickPlayer(
+		targetPlayerId: string,
+		block: boolean = false,
+	): Promise<boolean> {
+		if (this.isConvexLive && this.state.room) {
+			const client = getConvexClient();
+			if (client) {
+				try {
+					await client.mutation((api.game as any).kickPlayer, {
+						roomId: this.state.room._id as any,
+						hostPlayerId: this.playerId,
+						targetPlayerId,
+						block,
+					});
+					sound.playSnap();
+					return true;
+				} catch (err) {
+					console.warn("kickPlayer error:", err);
+					return false;
+				}
+			}
+		}
+
+		// Local simulation kick
+		const pin = this.state.room?.pin;
+		if (!pin) return false;
+		const local = this.loadLocalData(pin);
+		if (!local) return false;
+
+		local.players = (local.players || []).filter(
+			(p: Player) => p.playerId !== targetPlayerId,
+		);
+		local.submissions = (local.submissions || []).filter(
+			(s: Submission) => s.playerId !== targetPlayerId,
+		);
+		if (block) {
+			local.room.blockedPlayerIds = local.room.blockedPlayerIds || [];
+			local.room.blockedPlayerIds.push(targetPlayerId);
+		}
+
+		this.saveLocalData(pin, local);
+		this.applyLocalState(local);
+		sound.playSnap();
+		return true;
+	}
+
+	public async scramblePin(): Promise<string | null> {
+		if (this.isConvexLive && this.state.room) {
+			const client = getConvexClient();
+			if (client) {
+				try {
+					const res = await client.mutation((api.rooms as any).scramblePin, {
+						roomId: this.state.room._id as any,
+						hostPlayerId: this.playerId,
+					});
+					sound.playPop();
+					return res?.pin || null;
+				} catch (err) {
+					console.warn("scramblePin error:", err);
+					return null;
+				}
+			}
+		}
+
+		// Local simulation scramble
+		const oldPin = this.state.room?.pin;
+		if (!oldPin) return null;
+		const local = this.loadLocalData(oldPin);
+		if (!local) return null;
+
+		const newPin = Math.floor(100000 + Math.random() * 900000).toString();
+		local.room.pin = newPin;
+		localStorage.removeItem(`cah_room_${oldPin}`);
+		this.saveLocalData(newPin, local);
+		this.applyLocalState(local);
+		sound.playPop();
+		return newPin;
+	}
+
+	public async stopGameToLobby(): Promise<boolean> {
+		if (this.isConvexLive && this.state.room) {
+			const client = getConvexClient();
+			if (client) {
+				try {
+					await client.mutation((api.game as any).stopGameToLobby, {
+						roomId: this.state.room._id as any,
+						hostPlayerId: this.playerId,
+					});
+					sound.playPop();
+					return true;
+				} catch (err) {
+					console.warn("stopGameToLobby error:", err);
+					return false;
+				}
+			}
+		}
+
+		const pin = this.state.room?.pin;
+		if (!pin) return false;
+		const local = this.loadLocalData(pin);
+		if (!local) return false;
+
+		local.room.status = "lobby";
+		local.room.currentRound = 0;
+		local.room.winningSubmissionId = undefined;
+		local.room.roundWinnerPlayerId = undefined;
+		local.room.gameWinnerPlayerId = undefined;
+		local.submissions = [];
+
+		this.saveLocalData(pin, local);
+		this.applyLocalState(local);
+		sound.playPop();
+		return true;
+	}
+
+	public async restartGame(): Promise<boolean> {
+		if (this.isConvexLive && this.state.room) {
+			const client = getConvexClient();
+			if (client) {
+				try {
+					await client.mutation((api.game as any).restartGame, {
+						roomId: this.state.room._id as any,
+						hostPlayerId: this.playerId,
+					});
+					sound.playDeal();
+					return true;
+				} catch (err) {
+					console.warn("restartGame error:", err);
+					return false;
+				}
+			}
+		}
+
+		const pin = this.state.room?.pin;
+		if (!pin) return false;
+		const local = this.loadLocalData(pin);
+		if (!local) return false;
+
+		local.submissions = [];
+		local.room.status = "submitting";
+		local.room.currentRound = 1;
+		for (const p of local.players) {
+			p.score = 0;
+			p.hasSubmitted = false;
+		}
+
+		this.saveLocalData(pin, local);
+		this.applyLocalState(local);
+		sound.playDeal();
+		return true;
+	}
+
+	public async deleteRoom(): Promise<boolean> {
+		if (this.isConvexLive && this.state.room) {
+			const client = getConvexClient();
+			if (client) {
+				try {
+					await client.mutation((api.game as any).deleteRoom, {
+						roomId: this.state.room._id as any,
+						hostPlayerId: this.playerId,
+					});
+				} catch (err) {
+					console.warn("deleteRoom error:", err);
+				}
+			}
+		}
+
+		const pin = this.state.room?.pin;
+		if (pin) {
+			localStorage.removeItem(`cah_room_${pin}`);
+			if (this.broadcastChannel) {
+				this.broadcastChannel.postMessage({
+					type: "ROOM_DISBANDED",
+					pin,
+				});
+			}
+		}
+
+		this.leaveRoom();
+		this.userNotification = "You have disbanded the game room.";
 		return true;
 	}
 
@@ -799,7 +983,20 @@ class GameEngine {
 			api.rooms.getRoomState,
 			{ roomId: roomId as any, playerId: this.playerId },
 			(roomState: any) => {
-				if (!roomState) return;
+				if (!roomState) {
+					if (this.state.room) {
+						this.leaveRoom();
+						this.userNotification =
+							"The game room has ended or was disbanded by the host.";
+					}
+					return;
+				}
+
+				if (roomState.self?.isKicked) {
+					this.leaveRoom();
+					this.userNotification = "You were removed from the room by the host.";
+					return;
+				}
 
 				this.state.room = roomState.room;
 				this.state.players = roomState.players;

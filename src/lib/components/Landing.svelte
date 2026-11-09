@@ -9,6 +9,7 @@ import {
 	Sparkles,
 	AlertCircle,
 	Loader2,
+	X,
 } from "lucide-svelte";
 import RulesModal from "./RulesModal.svelte";
 
@@ -60,11 +61,11 @@ async function handleJoin(event: Event) {
 }
 </script>
 
-<div class="min-h-screen bg-[#090a0c] text-white flex flex-col justify-between p-4 sm:p-8">
+<div class="min-h-screen min-h-[100dvh] bg-[#090a0c] text-white flex flex-col justify-between p-4 sm:p-8 safe-pb safe-pt">
   <!-- Top Bar -->
-  <header class="max-w-4xl mx-auto w-full flex items-center justify-between py-4">
+  <header class="max-w-4xl mx-auto w-full flex items-center justify-between py-2 sm:py-4">
     <div class="flex items-center gap-2.5">
-      <div class="w-8 h-8 rounded-lg bg-white text-black font-black text-sm flex items-center justify-center shadow-md">
+      <div class="w-8 h-8 rounded-lg bg-white text-black font-black text-sm flex items-center justify-center shadow-md shrink-0">
         CAH
       </div>
       <span class="text-xs font-black tracking-widest uppercase text-white/60">
@@ -74,7 +75,7 @@ async function handleJoin(event: Event) {
 
     <button
       onclick={() => (showRules = true)}
-      class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-white/80 hover:text-white text-xs font-bold transition-colors"
+      class="min-h-[44px] flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 active:bg-white/20 text-white/80 hover:text-white text-xs font-bold transition-colors cursor-pointer"
     >
       <BookOpen class="w-4 h-4" />
       <span>Rules</span>
@@ -82,16 +83,34 @@ async function handleJoin(event: Event) {
   </header>
 
   <!-- Hero & Action Form -->
-  <main class="max-w-xl mx-auto w-full my-auto flex flex-col items-center text-center gap-8 py-8">
+  <main class="max-w-xl mx-auto w-full my-auto flex flex-col items-center text-center gap-6 sm:gap-8 py-6 sm:py-8">
     <!-- Brand Title -->
     <div class="space-y-3">
-      <h1 class="text-5xl sm:text-7xl font-black tracking-tight text-white leading-none">
+      <h1 class="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight text-white leading-none">
         Cards<br />Against<br />Humanity
       </h1>
-      <p class="text-sm sm:text-base text-white/60 max-w-sm mx-auto font-medium">
+      <p class="text-xs sm:text-base text-white/60 max-w-sm mx-auto font-medium">
         A party game for horrible people. Fully digitized for multiplayer web devices.
       </p>
     </div>
+
+    <!-- Notification Banner (Kicked / Room Disbanded) -->
+    {#if game.userNotification}
+      <div class="w-full p-4 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs sm:text-sm font-bold flex items-center justify-between gap-3 text-left animate-fadeIn">
+        <div class="flex items-center gap-2.5">
+          <AlertCircle class="w-5 h-5 flex-shrink-0 text-amber-400" />
+          <span>{game.userNotification}</span>
+        </div>
+        <button
+          onclick={() => (game.userNotification = null)}
+          class="min-w-[44px] min-h-[44px] p-2 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors flex items-center justify-center shrink-0 cursor-pointer"
+          title="Dismiss notification"
+          aria-label="Dismiss notification"
+        >
+          <X class="w-4 h-4" />
+        </button>
+      </div>
+    {/if}
 
     <!-- Error Banner -->
     {#if game.errorMessage}
@@ -102,7 +121,7 @@ async function handleJoin(event: Event) {
     {/if}
 
     <!-- Main Interactive Card -->
-    <div class="w-full bg-[#131418] border border-white/15 rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col gap-6 text-left">
+    <div class="w-full bg-[#131418] border border-white/15 rounded-3xl p-5 sm:p-8 shadow-2xl flex flex-col gap-5 sm:gap-6 text-left">
       <!-- Mode Switcher Tabs -->
       <div class="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-white/5 border border-white/10">
         <button
@@ -111,10 +130,10 @@ async function handleJoin(event: Event) {
             mode = "create";
             game.errorMessage = "";
           }}
-          class="py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 {
+          class="min-h-[44px] py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer {
             mode === 'create'
               ? 'bg-white text-black shadow-md'
-              : 'text-white/60 hover:text-white'
+              : 'text-white/60 hover:text-white active:text-white'
           }"
         >
           <Plus class="w-4 h-4" />
@@ -127,10 +146,10 @@ async function handleJoin(event: Event) {
             mode = "join";
             game.errorMessage = "";
           }}
-          class="py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 {
+          class="min-h-[44px] py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer {
             mode === 'join'
               ? 'bg-white text-black shadow-md'
-              : 'text-white/60 hover:text-white'
+              : 'text-white/60 hover:text-white active:text-white'
           }"
         >
           <Users class="w-4 h-4" />
@@ -140,7 +159,7 @@ async function handleJoin(event: Event) {
 
       <!-- Create Room Form (F-14: Wrapped in <form> with <label>) -->
       {#if mode === "create"}
-        <form onsubmit={handleCreate} class="flex flex-col gap-5">
+        <form onsubmit={handleCreate} class="flex flex-col gap-4 sm:gap-5">
           <div class="space-y-2">
             <label for="host-nickname" class="block text-xs font-bold text-white/70 uppercase tracking-wider">
               Your Display Name
@@ -152,7 +171,7 @@ async function handleJoin(event: Event) {
               disabled={game.isConnecting}
               placeholder="e.g. CardMaster, Dave, The Dictator"
               bind:value={nickname}
-              class="w-full px-4 py-3.5 rounded-2xl bg-white/5 border border-white/15 text-white placeholder-white/30 font-bold text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-white transition-all disabled:opacity-50"
+              class="w-full min-h-[48px] px-4 py-3 rounded-2xl bg-white/5 border border-white/15 text-white placeholder-white/30 font-bold text-base focus:outline-none focus:ring-2 focus:ring-white transition-all disabled:opacity-50"
             />
           </div>
 
@@ -170,10 +189,10 @@ async function handleJoin(event: Event) {
                       sound.playSelect();
                       targetScore = pts;
                     }}
-                    class="flex-1 py-2.5 rounded-xl text-xs font-black transition-all border disabled:opacity-50 {
+                    class="min-h-[44px] flex-1 py-2.5 rounded-xl text-xs font-black transition-all border disabled:opacity-50 cursor-pointer {
                       targetScore === pts
                         ? 'bg-white text-black border-white'
-                        : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'
+                        : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10 active:bg-white/15'
                     }"
                   >
                     {pts}
@@ -193,7 +212,7 @@ async function handleJoin(event: Event) {
                   sound.playSelect();
                   randoCardrissian = !randoCardrissian;
                 }}
-                class="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-between disabled:opacity-50 {
+                class="min-h-[44px] w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-between disabled:opacity-50 cursor-pointer {
                   randoCardrissian
                     ? 'bg-white/15 border-white/30 text-white'
                     : 'bg-white/5 border-white/10 text-white/40'
@@ -212,7 +231,7 @@ async function handleJoin(event: Event) {
           <button
             type="submit"
             disabled={game.isConnecting}
-            class="w-full py-4 rounded-2xl bg-white hover:bg-neutral-200 text-black font-black text-base transition-all shadow-xl active:scale-[0.99] flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
+            class="min-h-[52px] w-full py-4 rounded-2xl bg-white hover:bg-neutral-200 active:scale-[0.99] text-black font-black text-base transition-all shadow-xl flex items-center justify-center gap-2 mt-2 disabled:opacity-50 cursor-pointer"
           >
             {#if game.isConnecting}
               <Loader2 class="w-5 h-5 animate-spin" />
@@ -225,7 +244,7 @@ async function handleJoin(event: Event) {
         </form>
       {:else}
         <!-- Join Room Form (F-14: Wrapped in <form> with <label>) -->
-        <form onsubmit={handleJoin} class="flex flex-col gap-5">
+        <form onsubmit={handleJoin} class="flex flex-col gap-4 sm:gap-5">
           <div class="space-y-2">
             <label for="join-pin" class="block text-xs font-bold text-white/70 uppercase tracking-wider">
               Room PIN (6 digits)
@@ -240,7 +259,7 @@ async function handleJoin(event: Event) {
               placeholder="e.g. 849201"
               value={pin}
               oninput={handlePinInput}
-              class="w-full px-4 py-3.5 rounded-2xl bg-white/5 border border-white/15 text-white placeholder-white/30 font-mono font-black text-lg tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-white transition-all disabled:opacity-50"
+              class="w-full min-h-[48px] px-4 py-3 rounded-2xl bg-white/5 border border-white/15 text-white placeholder-white/30 font-mono font-black text-lg tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-white transition-all disabled:opacity-50"
             />
           </div>
 
@@ -255,14 +274,14 @@ async function handleJoin(event: Event) {
               disabled={game.isConnecting}
               placeholder="e.g. CardLover, Sarah, Human Disaster"
               bind:value={nickname}
-              class="w-full px-4 py-3.5 rounded-2xl bg-white/5 border border-white/15 text-white placeholder-white/30 font-bold text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-white transition-all disabled:opacity-50"
+              class="w-full min-h-[48px] px-4 py-3 rounded-2xl bg-white/5 border border-white/15 text-white placeholder-white/30 font-bold text-base focus:outline-none focus:ring-2 focus:ring-white transition-all disabled:opacity-50"
             />
           </div>
 
           <button
             type="submit"
             disabled={game.isConnecting}
-            class="w-full py-4 rounded-2xl bg-white hover:bg-neutral-200 text-black font-black text-base transition-all shadow-xl active:scale-[0.99] flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
+            class="min-h-[52px] w-full py-4 rounded-2xl bg-white hover:bg-neutral-200 active:scale-[0.99] text-black font-black text-base transition-all shadow-xl flex items-center justify-center gap-2 mt-2 disabled:opacity-50 cursor-pointer"
           >
             {#if game.isConnecting}
               <Loader2 class="w-5 h-5 animate-spin" />
@@ -277,7 +296,7 @@ async function handleJoin(event: Event) {
     </div>
 
     <!-- Deck Info Badge & Rules Quick-Access -->
-    <div class="flex flex-col sm:flex-row items-center gap-2.5 sm:gap-3 text-xs text-white/50 font-medium">
+    <div class="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 text-xs text-white/50 font-medium">
       <div class="flex items-center gap-2">
         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
         <span>100 Black Cards · 503 White Cards Digitized</span>
@@ -285,7 +304,7 @@ async function handleJoin(event: Event) {
       <span class="hidden sm:inline text-white/20">·</span>
       <button
         onclick={() => (showRules = true)}
-        class="inline-flex items-center gap-1.5 text-white/80 hover:text-white underline underline-offset-4 font-bold transition-colors cursor-pointer"
+        class="min-h-[44px] inline-flex items-center gap-1.5 px-3 py-2 text-white/80 hover:text-white underline underline-offset-4 font-bold transition-colors cursor-pointer"
       >
         <BookOpen class="w-3.5 h-3.5" />
         <span>How to Play & Rules</span>
@@ -294,9 +313,9 @@ async function handleJoin(event: Event) {
   </main>
 
   <!-- Footer -->
-  <footer class="max-w-4xl mx-auto w-full flex flex-col sm:flex-row items-center justify-between gap-2 py-4 text-xs text-white/30 border-t border-white/5">
+  <footer class="max-w-4xl mx-auto w-full flex flex-col sm:flex-row items-center justify-between gap-2.5 py-4 text-xs text-white/30 border-t border-white/5 text-center sm:text-left">
     <span>Cards Against Humanity is distributed under Creative Commons BY-NC-SA 2.0.</span>
-    <a href="/rules" class="hover:text-white/60 transition-colors underline underline-offset-2">
+    <a href="/rules" class="hover:text-white/60 transition-colors underline underline-offset-2 py-1">
       Full Rulebook (/rules)
     </a>
   </footer>
