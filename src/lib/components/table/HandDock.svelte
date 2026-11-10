@@ -26,7 +26,58 @@ let hasHandDock = $derived(
 		Boolean(self?.hand && self.hand.length > 0),
 );
 
+let trayEl = $state<HTMLDivElement | null>(null);
+let isPointerDown = false;
+let isDragging = $state(false);
+let startX = 0;
+let startScrollLeft = 0;
+let dragThresholdPassed = false;
+
+function handlePointerDown(e: PointerEvent) {
+	// Only apply drag-to-scroll for mouse input; touch input uses native touch scrolling
+	if (e.pointerType !== "mouse" || e.button !== 0 || !trayEl) return;
+	isPointerDown = true;
+	dragThresholdPassed = false;
+	startX = e.clientX;
+	startScrollLeft = trayEl.scrollLeft;
+}
+
+function handlePointerMove(e: PointerEvent) {
+	if (!isPointerDown || !trayEl || e.pointerType !== "mouse") return;
+	const delta = e.clientX - startX;
+	if (Math.abs(delta) > 5) {
+		dragThresholdPassed = true;
+		isDragging = true;
+		trayEl.scrollLeft = startScrollLeft - delta;
+	}
+}
+
+function handlePointerUp(e: PointerEvent) {
+	if (e.pointerType !== "mouse") return;
+	isPointerDown = false;
+	if (dragThresholdPassed) {
+		// Keep isDragging true briefly to suppress card click on mouse up
+		setTimeout(() => {
+			isDragging = false;
+			dragThresholdPassed = false;
+		}, 60);
+	} else {
+		isDragging = false;
+		dragThresholdPassed = false;
+	}
+}
+
+function handleWheel(e: WheelEvent) {
+	if (!trayEl) return;
+	// Convert vertical mouse wheel into horizontal scroll when hovering tray
+	if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && e.deltaY !== 0) {
+		trayEl.scrollLeft += e.deltaY;
+		e.preventDefault();
+	}
+}
+
 function handleCardClick(cardId: string) {
+	if (isDragging || dragThresholdPassed) return;
 	if (isCzar || room?.status !== "submitting" || hasSubmitted) return;
 	game.toggleCardSelection(cardId);
 }
@@ -85,7 +136,17 @@ function handleSubmit() {
       </div>
 
       <!-- Cards Horizontal Scroll Tray (F-07: Keyed loop) -->
-      <div class="flex items-center gap-2.5 sm:gap-3 overflow-x-auto pb-2 pt-1 hand-scroll touch-pan-x overscroll-x-contain [contain:content]">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        bind:this={trayEl}
+        onpointerdown={handlePointerDown}
+        onpointermove={handlePointerMove}
+        onpointerup={handlePointerUp}
+        onpointercancel={handlePointerUp}
+        onwheel={handleWheel}
+        ondragstart={(e) => e.preventDefault()}
+        class="flex items-center gap-2.5 sm:gap-3 overflow-x-auto pb-2 pt-1 hand-scroll touch-pan-x overscroll-x-contain select-none {isDragging ? 'cursor-grabbing' : 'cursor-grab'}"
+      >
         {#each self.hand as card (card.id)}
           {@const isSelected = selectedSet.has(card.id)}
           {@const pickIdx = isSelected ? selectedIds.indexOf(card.id) + 1 : undefined}

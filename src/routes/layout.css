@@ -52,8 +52,6 @@
 	-webkit-overflow-scrolling: touch;
 	scrollbar-width: thin;
 	scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
-	overscroll-behavior-x: contain;
-	touch-action: pan-x;
 }
 .hand-scroll::-webkit-scrollbar {
 	height: 6px;
@@ -71,12 +69,12 @@
 	background: rgba(255, 255, 255, 0.35);
 }
 
-/* Card hover lift effect - only on hover-capable devices to prevent sticking on mobile touch */
+/* Card hover lift effect - allows seamless horizontal and vertical touch gestures */
 .card-lift {
 	transition:
 		transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
 		box-shadow 0.18s ease-out;
-	touch-action: manipulation;
+	touch-action: pan-x pan-y;
 }
 
 @media (hover: hover) and (pointer: fine) {

@@ -91,7 +91,7 @@ let textTokens = $derived.by<TextToken[]>(() => {
     role="button"
     tabindex={selectable && !disabled ? 0 : -1}
     aria-pressed={selected}
-    class="card-perspective select-none touch-manipulation {sizeClasses[size]} {selectable && !disabled ? 'cursor-pointer active:scale-95' : ''}"
+    class="card-perspective select-none touch-pan-x {sizeClasses[size]} {selectable && !disabled ? 'cursor-pointer active:scale-95' : ''}"
     onclick={handleClick}
     onkeydown={handleKeyDown}
     onmouseenter={handleMouseEnter}
@@ -121,7 +121,7 @@ let textTokens = $derived.by<TextToken[]>(() => {
       <div
         class="card-back absolute inset-0 rounded-2xl bg-[#fcfdfd] text-[#111214] border border-black/10 p-3 sm:p-4 shadow-[0_12px_30px_rgba(0,0,0,0.5)] flex flex-col justify-between overflow-hidden"
       >
-        <div class="font-extrabold tracking-tight leading-snug break-words overflow-y-auto hand-scroll pr-1 flex-1 flex flex-col justify-start">
+        <div class="font-extrabold tracking-tight leading-snug break-words overflow-y-auto overflow-x-hidden [overscroll-behavior-x:auto] [touch-action:pan-x_pan-y] pr-1 flex-1 flex flex-col justify-start">
           {text}
         </div>
         <div class="flex items-center justify-between pt-1.5 sm:pt-2 border-t border-black/10 mt-1.5 sm:mt-2">
@@ -145,7 +145,7 @@ let textTokens = $derived.by<TextToken[]>(() => {
     role={selectable ? "button" : undefined}
     tabindex={selectable && !disabled ? 0 : undefined}
     aria-pressed={selectable ? selected : undefined}
-    class="relative rounded-2xl transition-[transform,box-shadow,opacity] duration-200 ease-out transform-gpu select-none flex flex-col justify-between overflow-hidden touch-manipulation {sizeClasses[size]} {
+    class="relative rounded-2xl transition-[transform,box-shadow,opacity] duration-200 ease-out transform-gpu select-none flex flex-col justify-between overflow-hidden touch-pan-x {sizeClasses[size]} {
       type === 'black'
         ? 'bg-[#111214] text-white border border-white/15 shadow-[0_12px_30px_rgba(0,0,0,0.8)]'
         : type === 'back'
@@ -188,7 +188,7 @@ let textTokens = $derived.by<TextToken[]>(() => {
       </div>
     {:else}
       <!-- Card Front: Safe tokenized text rendering (XSS-proof) -->
-      <div class="font-extrabold tracking-tight leading-snug break-words overflow-y-auto hand-scroll pr-1 flex-1 flex flex-col justify-start">
+      <div class="font-extrabold tracking-tight leading-snug break-words overflow-y-auto overflow-x-hidden [overscroll-behavior-x:auto] [touch-action:pan-x_pan-y] pr-1 flex-1 flex flex-col justify-start">
         {#if type === "black"}
           <span>
             {#each textTokens as token}
