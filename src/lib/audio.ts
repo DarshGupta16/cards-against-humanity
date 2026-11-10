@@ -3,6 +3,7 @@
 class SoundEffects {
 	private ctx: AudioContext | null = null;
 	private noiseBuffer: AudioBuffer | null = null;
+	private lastHoverTime: number = 0;
 	public enabled: boolean = true;
 
 	constructor() {
@@ -21,7 +22,6 @@ class SoundEffects {
 					.webkitAudioContext;
 			if (AudioCtx) {
 				this.ctx = new AudioCtx();
-				this.prebuildNoiseBuffer();
 			}
 		}
 		if (this.ctx && this.ctx.state === "suspended") {
@@ -57,6 +57,10 @@ class SoundEffects {
 	// Subtle tactile tap / hover
 	public playHover() {
 		if (!this.enabled) return;
+		const now = performance.now();
+		if (now - this.lastHoverTime < 50) return;
+		this.lastHoverTime = now;
+
 		// Don't wake un-resumed AudioContext on pure hover to respect autoplay policies (F-16)
 		if (this.ctx?.state !== "running") return;
 		const ctx = this.ctx;

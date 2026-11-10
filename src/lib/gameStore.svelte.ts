@@ -619,14 +619,45 @@ class GameEngine {
 					return;
 				}
 
-				this.state.room = roomState.room;
-				this.state.players = roomState.players;
-				this.state.self = roomState.self;
-				this.state.submissions = roomState.submissions;
-				this.state.isCzar = roomState.isCzar;
-				this.state.roundNumber = roomState.roundNumber;
+				this.applyTransformedState(roomState);
 			},
 		);
+	}
+
+	private applyTransformedState(transformed: GameState) {
+		this.state.room = transformed.room;
+
+		if (!arePlayersEqual(this.state.players, transformed.players)) {
+			this.state.players = transformed.players;
+		}
+
+		if (!this.state.self) {
+			this.state.self = transformed.self;
+		} else if (transformed.self) {
+			if (this.state.self.score !== transformed.self.score) {
+				this.state.self.score = transformed.self.score;
+			}
+			if (this.state.self.nickname !== transformed.self.nickname) {
+				this.state.self.nickname = transformed.self.nickname;
+			}
+			if (this.state.self.isHost !== transformed.self.isHost) {
+				this.state.self.isHost = transformed.self.isHost;
+			}
+			if (!areCardArraysEqual(this.state.self.hand, transformed.self.hand)) {
+				this.state.self.hand = transformed.self.hand;
+			}
+		} else {
+			this.state.self = null;
+		}
+
+		this.state.submissions = transformed.submissions;
+
+		if (this.state.isCzar !== transformed.isCzar) {
+			this.state.isCzar = transformed.isCzar;
+		}
+		if (this.state.roundNumber !== transformed.roundNumber) {
+			this.state.roundNumber = transformed.roundNumber;
+		}
 	}
 
 	private applyLocalState(localData: LocalRoomData) {
@@ -635,13 +666,45 @@ class GameEngine {
 			this.playerId,
 			this.nickname,
 		);
-		this.state.room = transformed.room;
-		this.state.players = transformed.players;
-		this.state.self = transformed.self;
-		this.state.submissions = transformed.submissions;
-		this.state.isCzar = transformed.isCzar;
-		this.state.roundNumber = transformed.roundNumber;
+		this.applyTransformedState(transformed);
 	}
+}
+
+function areCardArraysEqual(
+	a: Card[] | undefined,
+	b: Card[] | undefined,
+): boolean {
+	if (a === b) return true;
+	if (!a || !b || a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) {
+		if (a[i].id !== b[i].id || a[i].text !== b[i].text) return false;
+	}
+	return true;
+}
+
+function arePlayersEqual(
+	a: Player[] | undefined,
+	b: Player[] | undefined,
+): boolean {
+	if (a === b) return true;
+	if (!a || !b || a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) {
+		const pa = a[i];
+		const pb = b[i];
+		if (
+			pa.playerId !== pb.playerId ||
+			pa.score !== pb.score ||
+			pa.cardCount !== pb.cardCount ||
+			pa.isConnected !== pb.isConnected ||
+			pa.hasSubmitted !== pb.hasSubmitted ||
+			pa.isCzar !== pb.isCzar ||
+			pa.isHost !== pb.isHost ||
+			pa.nickname !== pb.nickname
+		) {
+			return false;
+		}
+	}
+	return true;
 }
 
 export const game = new GameEngine();

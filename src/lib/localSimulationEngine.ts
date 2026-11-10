@@ -83,10 +83,19 @@ export interface LocalRoomData {
 export class LocalSimulationEngine {
 	private broadcastChannel: BroadcastChannel | null = null;
 	private pollInterval: number | null = null;
+	private storageListener: ((e: StorageEvent) => void) | null = null;
+	private lastRawState: string = "";
+	private lastLoadedUpdatedAt: number = 0;
 
 	constructor() {
+		this.initBroadcastChannel();
+	}
+
+	private initBroadcastChannel() {
 		if (typeof window !== "undefined" && "BroadcastChannel" in window) {
-			this.broadcastChannel = new BroadcastChannel("cah_game_channel");
+			if (!this.broadcastChannel) {
+				this.broadcastChannel = new BroadcastChannel("cah_game_channel");
+			}
 		}
 	}
 
@@ -95,12 +104,20 @@ export class LocalSimulationEngine {
 		onStateUpdate: (state: LocalRoomData) => void,
 		onDisband?: (pin: string) => void,
 	) {
+		this.initBroadcastChannel();
 		if (!this.broadcastChannel) return;
 
 		this.broadcastChannel.onmessage = (event) => {
 			const { type, pin, state } = event.data;
 			const currentPin = currentPinGetter();
 			if (type === "STATE_UPDATE" && currentPin === pin && state) {
+				if (
+					state.room?.updatedAt &&
+					state.room.updatedAt <= this.lastLoadedUpdatedAt
+				) {
+					return;
+				}
+				this.lastLoadedUpdatedAt = state.room?.updatedAt || Date.now();
 				onStateUpdate(state);
 			} else if (type === "ROOM_DISBANDED" && currentPin === pin) {
 				onDisband?.(pin);
@@ -112,13 +129,41 @@ export class LocalSimulationEngine {
 		this.stopSync();
 
 		const sync = () => {
-			const data = this.loadLocalData(pin);
-			if (data) onUpdate(data);
+			if (typeof window === "undefined") return;
+			const raw = localStorage.getItem(`cah_room_${pin}`);
+			if (!raw) return;
+
+			// Fast string equality check completely bypasses JSON parsing and reactivity churn
+			if (raw === this.lastRawState) return;
+			this.lastRawState = raw;
+
+			try {
+				const data: LocalRoomData = JSON.parse(raw);
+				const incomingTime = data.room?.updatedAt || 0;
+				if (incomingTime && incomingTime <= this.lastLoadedUpdatedAt) {
+					return;
+				}
+				this.lastLoadedUpdatedAt = incomingTime;
+				onUpdate(data);
+			} catch {
+				// Ignore transient JSON parse errors
+			}
 		};
 
+		// Initial sync
 		sync();
+
 		if (typeof window !== "undefined") {
-			this.pollInterval = window.setInterval(sync, 1000);
+			// Instant cross-tab sync via window storage event
+			this.storageListener = (e: StorageEvent) => {
+				if (e.key === `cah_room_${pin}` && e.newValue) {
+					sync();
+				}
+			};
+			window.addEventListener("storage", this.storageListener);
+
+			// Fallback poll interval relaxed to 4000ms
+			this.pollInterval = window.setInterval(sync, 4000);
 		}
 	}
 
@@ -126,6 +171,10 @@ export class LocalSimulationEngine {
 		if (this.pollInterval) {
 			clearInterval(this.pollInterval);
 			this.pollInterval = null;
+		}
+		if (this.storageListener && typeof window !== "undefined") {
+			window.removeEventListener("storage", this.storageListener);
+			this.storageListener = null;
 		}
 	}
 
@@ -150,7 +199,14 @@ export class LocalSimulationEngine {
 
 	public saveLocalData(pin: string, data: LocalRoomData) {
 		if (typeof window === "undefined") return;
-		localStorage.setItem(`cah_room_${pin}`, JSON.stringify(data));
+		data.room.updatedAt = Math.max(Date.now(), (data.room.updatedAt || 0) + 1);
+		this.lastLoadedUpdatedAt = data.room.updatedAt;
+
+		const json = JSON.stringify(data);
+		this.lastRawState = json; // Prevent current tab from re-processing its own save
+
+		localStorage.setItem(`cah_room_${pin}`, json);
+		this.initBroadcastChannel();
 		if (this.broadcastChannel) {
 			this.broadcastChannel.postMessage({
 				type: "STATE_UPDATE",
@@ -165,15 +221,27 @@ export class LocalSimulationEngine {
 		usedIds: string[],
 		activeHandCardIds: string[] = [],
 	) {
-		let available = cardsData.white.filter((c) => !usedIds.includes(c.id));
+		const usedSet = new Set(usedIds);
+		let available = cardsData.white.filter((c) => !usedSet.has(c.id));
 		let currentUsed = usedIds;
 		if (available.length < count) {
 			const activeSet = new Set(activeHandCardIds);
 			available = cardsData.white.filter((c) => !activeSet.has(c.id));
 			currentUsed = [...activeHandCardIds];
 		}
-		const shuffled = [...available].sort(() => Math.random() - 0.5);
-		const drawn = shuffled.slice(0, count);
+
+		// Partial Fisher-Yates shuffle for O(k) drawing
+		const pool = [...available];
+		const n = Math.min(count, pool.length);
+		const drawn: Card[] = [];
+		for (let i = 0; i < n; i++) {
+			const j = i + Math.floor(Math.random() * (pool.length - i));
+			const temp = pool[i];
+			pool[i] = pool[j];
+			pool[j] = temp;
+			drawn.push(pool[i]);
+		}
+
 		return {
 			drawn,
 			updatedUsed: [...currentUsed, ...drawn.map((c) => c.id)],
@@ -181,7 +249,8 @@ export class LocalSimulationEngine {
 	}
 
 	public localDrawBlackCard(usedIds: string[]) {
-		let available = cardsData.black.filter((c) => !usedIds.includes(c.id));
+		const usedSet = new Set(usedIds);
+		let available = cardsData.black.filter((c) => !usedSet.has(c.id));
 		let currentUsed = usedIds;
 		if (available.length === 0) {
 			available = [...cardsData.black];

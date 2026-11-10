@@ -1,6 +1,18 @@
 <script lang="ts">
 import { sound } from "#lib/audio";
 
+const sizeClasses = {
+	sm: "w-28 h-40 sm:w-36 sm:h-48 p-2.5 sm:p-3 text-[11px] sm:text-xs flex-shrink-0",
+	md: "w-36 h-52 sm:w-48 sm:h-68 md:w-52 md:h-72 p-3 sm:p-4 text-xs sm:text-sm",
+	lg: "w-52 h-72 sm:w-64 sm:h-88 p-4 sm:p-5 text-sm sm:text-lg",
+	hand: "w-36 h-52 sm:w-44 sm:h-60 md:w-48 md:h-68 p-3 sm:p-4 text-xs sm:text-sm flex-shrink-0",
+};
+
+interface TextToken {
+	isBlank: boolean;
+	content: string;
+}
+
 interface Props {
 	type?: "black" | "white" | "back";
 	text?: string;
@@ -43,20 +55,22 @@ function handleKeyDown(event: KeyboardEvent) {
 }
 
 function handleMouseEnter() {
-	if (selectable && !disabled) {
+	// Only trigger hover sound on devices with fine pointer hover to prevent mobile double-firing
+	if (
+		selectable &&
+		!disabled &&
+		typeof window !== "undefined" &&
+		window.matchMedia("(hover: hover)").matches
+	) {
 		sound.playHover();
 	}
 }
 
 // Safe tokenization of text for fill-in-the-blank underscores (F-01, F-21)
-// Completely eliminates {@html} and prevents Stored XSS
-interface TextToken {
-	isBlank: boolean;
-	content: string;
-}
-
+// Short-circuits immediately for white cards to avoid unnecessary regex work and heap allocations
 let textTokens = $derived.by<TextToken[]>(() => {
-	if (!text) return [];
+	if (type !== "black" || !text) return [];
+	if (!text.includes("___")) return [{ isBlank: false, content: text }];
 	const parts = text.split(/_{3,}/);
 	const tokens: TextToken[] = [];
 	for (let i = 0; i < parts.length; i++) {
@@ -69,13 +83,6 @@ let textTokens = $derived.by<TextToken[]>(() => {
 	}
 	return tokens;
 });
-
-const sizeClasses = {
-	sm: "w-28 h-40 sm:w-36 sm:h-48 p-2.5 sm:p-3 text-[11px] sm:text-xs flex-shrink-0",
-	md: "w-36 h-52 sm:w-48 sm:h-68 md:w-52 md:h-72 p-3 sm:p-4 text-xs sm:text-sm",
-	lg: "w-52 h-72 sm:w-64 sm:h-88 p-4 sm:p-5 text-sm sm:text-lg",
-	hand: "w-36 h-52 sm:w-44 sm:h-60 md:w-48 md:h-68 p-3 sm:p-4 text-xs sm:text-sm flex-shrink-0",
-};
 </script>
 
 {#if flipMode}
@@ -84,7 +91,7 @@ const sizeClasses = {
     role="button"
     tabindex={selectable && !disabled ? 0 : -1}
     aria-pressed={selected}
-    class="card-perspective select-none {sizeClasses[size]} {selectable && !disabled ? 'cursor-pointer active:scale-95' : ''}"
+    class="card-perspective select-none touch-manipulation {sizeClasses[size]} {selectable && !disabled ? 'cursor-pointer active:scale-95' : ''}"
     onclick={handleClick}
     onkeydown={handleKeyDown}
     onmouseenter={handleMouseEnter}
@@ -138,17 +145,17 @@ const sizeClasses = {
     role={selectable ? "button" : undefined}
     tabindex={selectable && !disabled ? 0 : undefined}
     aria-pressed={selectable ? selected : undefined}
-    class="relative rounded-2xl transition-all duration-200 select-none flex flex-col justify-between overflow-hidden {sizeClasses[size]} {
+    class="relative rounded-2xl transition-[transform,box-shadow,opacity] duration-200 ease-out transform-gpu select-none flex flex-col justify-between overflow-hidden touch-manipulation {sizeClasses[size]} {
       type === 'black'
         ? 'bg-[#111214] text-white border border-white/15 shadow-[0_12px_30px_rgba(0,0,0,0.8)]'
         : type === 'back'
           ? 'bg-[#0a0a0b] text-white border border-white/20 shadow-[0_10px_25px_rgba(0,0,0,0.6)]'
           : 'bg-[#fcfdfd] text-[#111214] border border-black/10 shadow-[0_8px_24px_rgba(0,0,0,0.35)]'
     } {
-      selectable && !disabled ? 'cursor-pointer card-lift active:scale-95' : ''
+      selectable && !disabled ? 'cursor-pointer card-lift' : ''
     } {
       selected
-        ? 'ring-4 ring-white -translate-y-3 shadow-[0_20px_40px_rgba(255,255,255,0.25)]'
+        ? 'ring-4 ring-white -translate-y-3 shadow-[0_12px_28px_rgba(255,255,255,0.22)]'
         : ''
     } {
       disabled ? 'opacity-50 cursor-not-allowed' : ''

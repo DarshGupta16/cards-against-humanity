@@ -46,24 +46,28 @@ function handlePickWinner(sub: Submission) {
 {/if}
 
 <!-- Round Status Banner -->
-<div class="w-full max-w-xl text-center">
+<div class="w-full max-w-xl text-center min-h-[52px] flex items-center justify-center">
   {#if room?.status === "submitting"}
     {#if isCzar}
-      <div class="p-4 rounded-2xl bg-amber-400/10 border border-amber-400/20 text-amber-200 text-sm font-bold flex items-center justify-center gap-2">
+      <div class="w-full p-4 rounded-2xl bg-amber-400/10 border border-amber-400/20 text-amber-200 text-sm font-bold flex items-center justify-center gap-2">
         <span>You are judging this round. Waiting for players to submit cards...</span>
       </div>
     {:else if hasSubmitted}
       <!-- F-08: Clean status for already submitted players -->
-      <div class="p-4 rounded-2xl bg-white/10 border border-white/20 text-white text-sm font-bold flex items-center justify-center gap-2">
+      <div class="w-full p-4 rounded-2xl bg-white/10 border border-white/20 text-white text-sm font-bold flex items-center justify-center gap-2">
         <Check class="w-4 h-4 text-emerald-400 stroke-[3]" />
         <span>Cards submitted! Waiting for other players to finish...</span>
       </div>
     {:else if self?.hand && self.hand.length > 0 && selectedIds.length === 0}
-      <div class="p-3 rounded-2xl bg-white/5 border border-white/10 text-white/80 text-sm font-bold">
+      <div class="w-full p-3 rounded-2xl bg-white/5 border border-white/10 text-white/80 text-sm font-bold">
         Select {requiredPick === 1 ? "1 card" : `${requiredPick} cards in order`} from your hand below.
       </div>
+    {:else if self?.hand && self.hand.length > 0 && !canSubmit}
+      <div class="w-full p-3 rounded-2xl bg-white/10 border border-white/15 text-white/90 text-sm font-bold">
+        Selected {selectedIds.length} of {requiredPick} cards. Pick {requiredPick - selectedIds.length} more!
+      </div>
     {:else if canSubmit}
-      <div class="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-sm font-bold animate-pulse">
+      <div class="w-full p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-sm font-bold">
         Ready to submit! Click "Submit Selection" below.
       </div>
     {/if}

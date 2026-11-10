@@ -10,6 +10,7 @@ let isCzar = $derived(Boolean(game.state.isCzar));
 let submissions = $derived(game.state.submissions);
 let blackCard = $derived(room?.blackCard);
 let selectedIds = $derived(game.selectedCardIds);
+let selectedSet = $derived(new Set(selectedIds));
 
 let requiredPick = $derived(blackCard?.pick ?? 1);
 let hasSubmitted = $derived(
@@ -42,7 +43,7 @@ function handleSubmit() {
 </script>
 
 {#if hasHandDock && self?.hand}
-  <footer class="w-full border-t border-white/15 bg-[#121316]/95 backdrop-blur-xl fixed bottom-0 left-0 right-0 z-40 p-3 sm:p-4 safe-pb shadow-[0_-10px_30px_rgba(0,0,0,0.8)]">
+  <footer class="w-full border-t border-white/15 bg-[#121316] fixed bottom-0 left-0 right-0 z-40 p-3 sm:p-4 safe-pb shadow-[0_-4px_20px_rgba(0,0,0,0.6)]">
     <div class="max-w-6xl mx-auto flex flex-col gap-2.5 sm:gap-3">
       <!-- Hand Header and Submit Button -->
       <div class="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
@@ -84,9 +85,9 @@ function handleSubmit() {
       </div>
 
       <!-- Cards Horizontal Scroll Tray (F-07: Keyed loop) -->
-      <div class="flex items-center gap-2.5 sm:gap-3 overflow-x-auto pb-2 pt-1 hand-scroll touch-pan-x overscroll-x-contain">
+      <div class="flex items-center gap-2.5 sm:gap-3 overflow-x-auto pb-2 pt-1 hand-scroll touch-pan-x overscroll-x-contain [contain:content]">
         {#each self.hand as card (card.id)}
-          {@const isSelected = selectedIds.includes(card.id)}
+          {@const isSelected = selectedSet.has(card.id)}
           {@const pickIdx = isSelected ? selectedIds.indexOf(card.id) + 1 : undefined}
           <CardComponent
             type="white"
